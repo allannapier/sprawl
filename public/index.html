@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Streets grow on their own. Keep the town happy with shops, bus stops, parks and schools.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px/1.4 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Sprawl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
+<style>
+/* Layout: one-screen game. Status bar, a square-celled town map, a tray of tiles. */
+:root{
+  --ground:#DCE3D6; --plate:#E9EEE4; --street:#FCFCF8; --edge:#C3CCBC;
+  --house:#56616D; --bubble:#FFFFFF; --angry:#D63E28; --line:#C9D1C2;
+  --ink:#1D2420; --muted:#5F6A63; --panel:#F5F7F1;
+  --shop:#E0742A; --bus:#2C66D2; --park:#2E8F50; --school:#B3860F;
+  --display:"Bricolage Grotesque", ui-rounded, system-ui, sans-serif;
+  --body:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121715; --plate:#18201D; --street:#36403B; --edge:#232B27;
+    --house:#AEB8C2; --bubble:#202825; --angry:#FF6B52; --line:#2E3833;
+    --ink:#E6EBE7; --muted:#97A39C; --panel:#1C2420;
+    --shop:#F08A40; --bus:#5D8FF2; --park:#4CB673; --school:#DDB040;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121715; --plate:#18201D; --street:#36403B; --edge:#232B27;
+  --house:#AEB8C2; --bubble:#202825; --angry:#FF6B52; --line:#2E3833;
+  --ink:#E6EBE7; --muted:#97A39C; --panel:#1C2420;
+  --shop:#F08A40; --bus:#5D8FF2; --park:#4CB673; --school:#DDB040;
+  color-scheme:dark;
+}
+html{box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+.app{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:8px;padding-block:10px}
+.bar{display:flex;align-items:center;gap:12px}
+.bar h1{font:700 1.35rem/1 var(--display);letter-spacing:-.01em;margin:0 auto 0 0}
+.stats{display:flex;gap:16px;align-items:flex-end}
+.stat{display:flex;flex-direction:column;gap:4px}
+.k{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.v{font:600 1.05rem/1 var(--display);font-variant-numeric:tabular-nums}
+.wk{display:block;height:3px;width:42px;background:var(--line);border-radius:2px;overflow:hidden}
+.wk i{display:block;height:100%;width:0;background:var(--ink)}
+.pips{display:flex;gap:3px;height:1.05rem;align-items:center}
+.pips b{width:10px;height:10px;border-radius:50%;border:2px solid var(--line)}
+.pips b.on{background:var(--angry);border-color:var(--angry)}
+.spd{font:700 .85rem/1 var(--display);font-variant-numeric:tabular-nums;margin-right:-6px}
+.spd.slow{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.icon{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon:disabled{opacity:.4;cursor:default}
+.stage{position:relative;width:100%;aspect-ratio:15 / 22;max-height:calc(100dvh - 180px);min-height:260px;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.toast{position:absolute;top:10px;left:50%;transform:translate(-50%,-6px);display:inline-flex;align-items:center;gap:6px;padding:6px 12px 6px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:.85rem;font-weight:600;box-shadow:0 4px 14px rgb(0 0 0 / .12);opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast svg{width:14px;height:14px}
+.hint{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;min-height:30px;}
+.mini{padding:6px 12px;border-radius:999px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);font:600 .8rem/1 var(--body);cursor:pointer}
+.mini:disabled{opacity:.4;cursor:default}
+.hint span{margin:0;font-size:.82rem;color:var(--muted);min-height:1.25em;text-align:center;text-wrap:balance}
+.tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tool{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;align-items:center;padding:8px 10px;border-radius:12px;
+  border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;cursor:pointer;text-align:left;min-width:0}
+.tool svg{grid-row:span 2;width:22px;height:22px}
+.tool .cnt{font:700 1.15rem/1 var(--display);font-variant-numeric:tabular-nums}
+.tool .lbl{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool[aria-pressed="true"]{border-color:var(--ink);background:var(--plate);box-shadow:inset 0 0 0 1px var(--ink)}
+.tool:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--bus);outline-offset:2px}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;
+  background:color-mix(in srgb, var(--ground) 40%, transparent)}
+.card{width:100%;max-width:360px;max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  padding:18px;box-shadow:0 12px 32px rgb(0 0 0 / .14);display:flex;flex-direction:column;gap:12px}
+.card h2{font:700 1.5rem/1.1 var(--display);margin:0;text-wrap:balance}
+.card p{margin:0;line-height:1.45;font-size:.9rem}
+.card .muted{color:var(--muted);font-size:.8rem}
+.rules{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:.88rem;line-height:1.4}
+.rules li{display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:start}
+.rules svg{width:18px;height:18px;margin-top:1px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{flex:1 1 auto;padding:11px 14px;border-radius:11px;border:1.5px solid var(--line);background:transparent;color:var(--ink);font:600 .92rem/1 var(--body);cursor:pointer}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px 5px 7px;border-radius:999px;border:1px solid var(--line);font-size:.82rem;font-weight:600}
+.chip svg{width:14px;height:14px}
+.chip em{font-style:normal;font-weight:500;color:var(--muted)}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;flex-direction:column;gap:3px;text-align:left;padding:11px 13px;border-radius:12px;border:1.5px solid var(--line);background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.opt:hover{border-color:var(--ink)}
+.opt b{font:700 .98rem/1.2 var(--display)}
+.opt span{font-size:.82rem;color:var(--muted)}
+.label{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.big{font:700 2.6rem/1 var(--display);font-variant-numeric:tabular-nums}
+.lb{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.lb form{display:flex;gap:8px}
+.lb input{flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--ground);color:var(--ink);font:500 .95rem/1 var(--body)}
+.lb input:focus-visible{outline:2px solid var(--bus);outline-offset:1px}
+.rank{font:700 1.05rem/1.3 var(--display);margin:0}
+.board{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;font-size:.86rem;font-variant-numeric:tabular-nums}
+.board li{display:grid;grid-template-columns:2.2em minmax(0,1fr) auto;gap:8px;padding:5px 8px;border-radius:8px}
+.board li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board li span:first-child,.board .gap{color:var(--muted)}
+.board li.me{background:var(--ink);color:var(--panel)}
+.board li.me span:first-child{color:inherit}
+.board .gap{padding:0 8px;line-height:1}
+.linkbtn{background:none;border:0;padding:0;color:var(--muted);font:inherit;font-size:.8rem;text-decoration:underline;cursor:pointer;align-self:flex-start}
+@media (max-width:420px){ .stats{gap:12px} .bar h1{font-size:1.15rem} .tool{padding:7px 8px;column-gap:6px} .tool svg{width:18px;height:18px} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <h1>Sprawl</h1>
+    <div class="stats">
+      <div class="stat"><span class="k">Week</span><span class="v" id="week">1</span><span class="wk"><i id="weekbar"></i></span></div>
+      <div class="stat"><span class="k">Score</span><span class="v" id="score">0</span><span class="wk" style="visibility:hidden"></span></div>
+      <div class="stat"><span class="k">Fed up</span><span class="pips" id="pips"><b></b><b></b><b></b><b></b><b></b></span><span class="wk" style="visibility:hidden"></span></div>
+    </div>
+    <button class="icon spd" id="speed" aria-label="Game speed">1×</button>
+    <button class="icon" id="pause" aria-label="Pause">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor"/></svg>
+    </button>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="cv" aria-label="Town map"></canvas>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="overlay" id="ov" hidden><div class="card" id="card"></div></div>
+  </main>
+  <div class="hint"><span id="hint" aria-live="polite"></span><button class="mini" id="move" hidden>Move</button></div>
+  <nav class="tools" id="tools" aria-label="Tiles"></nav>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const cv=$('#cv'), ctx=cv.getContext('2d');
+const TYPES={
+  shop:  {name:'Shop',     shape:'circle',  reach:4, cap:5, w:4, blurb:'Shops reach 4 street blocks and serve 5 homes.',lv:['Shop','Supermarket','Mall']},
+  bus:   {name:'Bus stop', shape:'triangle',reach:7, cap:6, w:3, blurb:'Bus stops reach 7 blocks and serve 6 homes.',lv:['Bus stop','Bus hub','Station']},
+  park:  {name:'Park',     shape:'diamond', reach:3, cap:6, w:2, blurb:'Parks only reach 3 blocks but serve 6 homes.',lv:['Park','Gardens','Country park']},
+  school:{name:'School',   shape:'square',  reach:6, cap:9, w:2, blurb:'Schools reach 6 blocks and serve 9 homes.',lv:['School','High school','Campus']}
+};
+const ORDER=['shop','bus','park','school'];
+const WEEK=45, EMPTY=0, STREET=1, HOUSE=2, SERVICE=3;
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let S=null, col={}, layout={cs:20,ox:0,oy:0,w:0,h:0};
+let tool=null, pending=-1, hover=-1, selected=-1, moving=-1, dirty=true;
+const MAXLVL=3;
+function happy(h){return !h.by.some(b=>b<0)}
+function firstUnmet(h){const k=h.by.findIndex(b=>b<0);return k<0?null:h.needs[k]}
+
+/* ---------- random ---------- */
+function rand(){S.rng=(S.rng+0x6D2B79F5)|0;let t=S.rng;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}
+function ri(n){return Math.floor(rand()*n)}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=ri(i+1);[a[i],a[j]]=[a[j],a[i]]}return a}
+function hashStr(s){let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h|0}
+function todaySeed(){return new Date().toISOString().slice(0,10)}
+function plural(t){return TYPES[t].name+'s'}
+
+/* ---------- grid helpers ---------- */
+function inb(x,y){return x>=0&&y>=0&&x<S.cols&&y<S.rows}
+function nb(i){const C=S.cols,x=i%C,y=(i/C)|0,r=[];if(x>0)r.push(i-1);if(x<C-1)r.push(i+1);if(y>0)r.push(i-C);if(y<S.rows-1)r.push(i+C);return r}
+function isSt(i){return S.grid[i]===STREET}
+function block2(i){const C=S.cols,x=i%C,y=(i/C)|0;
+  for(const [ox,oy] of [[0,0],[-1,0],[0,-1],[-1,-1]]){const ax=x+ox,ay=y+oy;if(!inb(ax,ay)||!inb(ax+1,ay+1))continue;
+    let n=0;for(const [a,b] of [[0,0],[1,0],[0,1],[1,1]]){const j=(ay+b)*C+ax+a;if(j===i||isSt(j))n++}if(n===4)return true}
+  return false}
+function aheadSet(){const s=new Set();for(const h of S.heads){const x=h.i%S.cols+h.dx,y=((h.i/S.cols)|0)+h.dy;if(inb(x,y))s.add(y*S.cols+x)}return s}
+
+/* ---------- streets ---------- */
+function stepOK(from,j){return S.grid[j]===EMPTY&&!block2(j)}
+function grow(){
+  if(S.heads.length<2||(S.heads.length<5&&rand()<0.14))branch();
+  if(!S.heads.length)return false;
+  const hi=ri(S.heads.length),h=S.heads[hi];
+  const st=[h.dx,h.dy],L=[-h.dy,h.dx],R=[h.dy,-h.dx];
+  const dirs=rand()<0.2?(rand()<.5?[L,st,R]:[R,st,L]):[st,...(rand()<.5?[L,R]:[R,L])];
+  for(const [dx,dy] of dirs){
+    const x=h.i%S.cols+dx,y=((h.i/S.cols)|0)+dy;if(!inb(x,y))continue;
+    const j=y*S.cols+x;if(!stepOK(h.i,j))continue;
+    const prev=h.i;S.grid[j]=STREET;h.i=j;h.dx=dx;h.dy=dy;dirty=true;
+    if(nb(j).some(n=>n!==prev&&isSt(n)))S.heads.splice(hi,1);
+    return true;
+  }
+  S.heads.splice(hi,1);return false;
+}
+function branch(){
+  const sts=[];for(let i=0;i<S.grid.length;i++)if(S.grid[i]===STREET)sts.push(i);
+  for(let k=0;k<30;k++){
+    const s=sts[ri(sts.length)],[dx,dy]=[[1,0],[-1,0],[0,1],[0,-1]][ri(4)];
+    const x=s%S.cols+dx,y=((s/S.cols)|0)+dy;if(!inb(x,y))continue;
+    const j=y*S.cols+x;if(!stepOK(s,j))continue;
+    if(nb(j).some(n=>n!==s&&isSt(n)))continue;
+    const fx=x+dx,fy=y+dy;if(!inb(fx,fy)||S.grid[fy*S.cols+fx]!==EMPTY)continue;
+    S.grid[j]=STREET;S.heads.push({i:j,dx,dy});dirty=true;return true;
+  }
+  return false;
+}
+
+/* ---------- homes ---------- */
+function pickNeed(){const ts=ORDER.slice(0,S.unlocked);let tot=0;for(const t of ts)tot+=TYPES[t].w;let r=rand()*tot;for(const t of ts){r-=TYPES[t].w;if(r<0)return t}return ts[0]}
+function spawnCands(){const ahead=aheadSet(),c=[];for(let i=0;i<S.grid.length;i++)if(S.grid[i]===EMPTY&&!ahead.has(i)&&nb(i).some(isSt))c.push(i);return c}
+function expand(){
+  const portrait=S.rows>S.cols,dr=portrait?3:2;
+  if(S.cols+2>(portrait?21:34))return false;
+  const C=S.cols,R=S.rows,nc=C+2,nr=R+dr,m=i=>(((i/C)|0)+1)*nc+i%C+1;
+  const g=new Array(nc*nr).fill(EMPTY);for(let i=0;i<S.grid.length;i++)g[m(i)]=S.grid[i];
+  for(const o of [...S.heads,...S.houses,...S.services])o.i=m(o.i);
+  const edge=[];for(let i=0;i<S.grid.length;i++){if(S.grid[i]!==STREET)continue;const x=i%C,y=(i/C)|0;
+    if(x===0)edge.push({i:m(i),dx:-1,dy:0});if(x===C-1)edge.push({i:m(i),dx:1,dy:0});
+    if(y===0)edge.push({i:m(i),dx:0,dy:-1});if(y===R-1)edge.push({i:m(i),dx:0,dy:1});}
+  S.grid=g;S.cols=nc;S.rows=nr;
+  for(const h of shuffle(edge).slice(0,4))S.heads.push(h);
+  if(S.heads.length<2)for(let k=0;k<4;k++)branch();
+  pending=-1;hover=-1;selected=-1;moving=-1;dirty=true;resize();
+  const el=document.getElementById('toast');el.textContent='The town is spreading';el.classList.add('show');
+  clearTimeout(restock.tm);restock.tm=setTimeout(()=>el.classList.remove('show'),1800);
+  return true;
+}
+function spawnHouse(){
+  let cand=spawnCands();
+  if(cand.length<5&&expand())cand=spawnCands();
+  if(!cand.length){if(!S.grid.some((_,i)=>canPlace(i)))gameOver(true);return}
+  const i=cand[ri(cand.length)];
+  S.grid[i]=HOUSE;S.houses.push({i,needs:[pickNeed()],by:[-1],lvl:1,happyT:0,wait:0,angry:false});dirty=true;
+}
+
+/* ---------- reach and serving ---------- */
+function reachOf(t,l=1){return TYPES[t].reach+S.mods.reach+(l-1)}
+function capOf(t,l=1){return (TYPES[t].cap+S.mods.cap)*l}
+function svcName(s){return TYPES[s.type].lv[(s.lvl||1)-1]}
+function svcAt(i){return S.services.findIndex(s=>s.i===i)}
+function canUpgrade(i){if(!tool||i<0||S.grid[i]!==SERVICE)return false;const s=S.services[svcAt(i)];return !!s&&s.type===tool&&(s.lvl||1)<3}
+function canUse(i){return canPlace(i)||canUpgrade(i)}
+function reachMap(cell,t,l=1){
+  const R=reachOf(t,l),d=new Map(),q=[];
+  for(const n of nb(cell))if(isSt(n)){d.set(n,0);q.push(n)}
+  for(let k=0;k<q.length;k++){const c=q[k],dc=d.get(c);if(dc>=R)continue;for(const n of nb(c))if(isSt(n)&&!d.has(n)){d.set(n,dc+1);q.push(n)}}
+  return d;
+}
+function houseDist(i,map){let b=1e9;for(const n of nb(i))if(map.has(n))b=Math.min(b,map.get(n));return b}
+function assign(){
+  const maps=S.services.map(s=>reachMap(s.i,s.type,s.lvl||1)),load=S.services.map(()=>0),caps=S.services.map(s=>capOf(s.type,s.lvl||1));
+  const req=[];
+  for(const h of S.houses){h.by=h.needs.map(()=>-1);
+    h.needs.forEach((t,n)=>{const opts=[];S.services.forEach((s,k)=>{if(s.type!==t)return;const d=houseDist(h.i,maps[k]);if(d<1e9)opts.push({k,d})});
+      if(opts.length)req.push({h,n,opts})})}
+  // homes with the fewest choices pick first, so a new tile nearby takes load off its neighbours
+  req.sort((a,b)=>a.opts.length-b.opts.length);
+  for(const r of req){let best=-1,bs=1e9;
+    for(const o of r.opts){if(load[o.k]>=caps[o.k])continue;const sc=o.d+8*load[o.k]/caps[o.k];if(sc<bs){bs=sc;best=o.k}}
+    if(best>=0){load[best]++;r.h.by[r.n]=best}}
+  const full=S.services.map(()=>false);
+  for(const r of req)if(r.h.by[r.n]<0)for(const o of r.opts)full[o.k]=true;
+  S.load=load;S.full=full;dirty=false;
+}
+
+/* ---------- game ---------- */
+function growInterval(){return 2.6*S.mods.growth/(1+0.15*(S.week-1))}
+function spawnInterval(){return Math.max(1.25,5/(1+0.17*(S.week-1)))}
+function patience(){return Math.max(20,38-2*(S.week-1))+S.mods.patience}
+
+function newGame(seed,daily){
+  const portrait=innerWidth<700||innerHeight>=innerWidth;
+  const cols=portrait?15:24,rows=portrait?22:15;
+  $('#stage').style.aspectRatio=cols+' / '+rows;
+  S={cols,rows,grid:new Array(cols*rows).fill(EMPTY),heads:[],houses:[],services:[],load:[],
+     inv:{shop:4,bus:0,park:0,school:0},week:1,weekT:0,t:0,growT:1.5,spawnT:2.5,stockT:10,score:0,angry:0,moves:1,
+     mods:{reach:0,cap:0,growth:1,patience:0},rng:hashStr(seed),seed,daily,over:false,paused:true,started:false,unlocked:1,modal:null};
+  const c=(rows>>1)*cols+(cols>>1);S.grid[c]=STREET;
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])S.heads.push({i:c,dx,dy});
+  for(let k=0;k<16;k++)grow();
+  for(let k=0;k<3;k++)spawnHouse();
+  tool=null;pending=-1;hover=-1;selected=-1;moving=-1;dirty=true;
+  resize();
+}
+function step(dt){
+  S.t+=dt;S.weekT+=dt;
+  S.growT-=dt;if(S.growT<=0){grow()||grow();S.growT=growInterval()}
+  S.spawnT-=dt;if(S.spawnT<=0){spawnHouse();S.spawnT=spawnInterval()}
+  S.stockT=(S.stockT??10)-dt;if(S.stockT<=0){restock();S.stockT=Math.max(5,11-S.week*.75)}
+  if(dirty)assign();
+  const P=patience();let served=0,angry=0;
+  for(const h of S.houses){
+    if(happy(h)){served+=h.lvl;h.wait=Math.max(0,h.wait-dt*3);if(h.wait<P*0.6)h.angry=false;
+      h.happyT+=dt;
+      if(h.lvl<MAXLVL&&h.happyT>=34+(h.i%5)*4){
+        const opts=ORDER.slice(0,S.unlocked).filter(t=>!h.needs.includes(t));
+        if(opts.length){h.lvl++;h.needs.push(opts[ri(opts.length)]);h.by.push(-1);h.pop=S.t;dirty=true}
+        h.happyT=0;
+      }}
+    else{h.happyT=0;h.wait=Math.min(P,h.wait+dt);if(h.wait>=P)h.angry=true}
+    if(h.angry)angry++;
+  }
+  S.score+=served*dt;S.angry=angry;
+  if(angry>=5)return gameOver();
+  if(S.weekT>=WEEK)weekEnd();
+}
+function deficit(t){let n=0;for(const h of S.houses)h.needs.forEach((x,k)=>{if(x===t&&h.by[k]<0)n++});return n-S.inv[t]*capOf(t)}
+function restock(){
+  if(dirty)assign();let best=null,bd=0;
+  for(const t of ORDER.slice(0,S.unlocked)){const d=deficit(t);if(d>bd){bd=d;best=t}}
+  if(!best)return;S.inv[best]++;
+  const el=document.getElementById('toast');el.innerHTML=icon(best)+'+1 '+TYPES[best].name;el.classList.add('show');
+  clearTimeout(restock.tm);restock.tm=setTimeout(()=>el.classList.remove('show'),1800);
+}
+function demandPick(){
+  const ts=ORDER.slice(0,S.unlocked),w=ts.map(t=>1+Math.max(0,deficit(t))*2);
+  let r=rand()*w.reduce((a,b)=>a+b,0);for(let k=0;k<ts.length;k++){r-=w[k];if(r<0)return ts[k]}return ts[0];
+}
+function weekEnd(){
+  S.weekT=0;S.week++;const got={};let fresh=null;S.moves=Math.min(2,(S.moves||0)+1);moving=-1;
+  if(S.unlocked<ORDER.length){S.unlocked++;fresh=ORDER[S.unlocked-1];S.inv[fresh]++;got[fresh]=1}
+  const n=3+Math.floor((S.week-1)/2);
+  for(let k=0;k<n;k++){const t=demandPick();S.inv[t]++;got[t]=(got[t]||0)+1}
+  const unl=shuffle(ORDER.slice(0,S.unlocked)),pool=[];
+  for(const t of unl.slice(0,2))pool.push({id:'extra',t,title:'+2 '+plural(t),desc:'Two more '+plural(t).toLowerCase()+' for your tray.'});
+  pool.push({id:'reach',title:'Longer walks',desc:'Every tile reaches 1 more street block.'},
+            {id:'cap',title:'Bigger premises',desc:'Every tile serves 2 more homes.'},
+            {id:'slow',title:'Planning freeze',desc:'Streets grow 15% slower.'},
+            {id:'patience',title:'Patient neighbours',desc:'Homes wait 5 seconds longer before getting fed up.'});
+  setModal({kind:'week',got,fresh,opts:shuffle(pool).slice(0,3)});
+}
+function applyOpt(o){
+  if(o.id==='extra')S.inv[o.t]+=2;else if(o.id==='reach')S.mods.reach++;else if(o.id==='cap')S.mods.cap+=2;
+  else if(o.id==='slow')S.mods.growth*=1.15;else if(o.id==='patience')S.mods.patience+=5;dirty=true;
+}
+const SPEEDS=[1,.75,.5],SPLBL=['1×','¾×','½×'];
+let spd=0;try{spd=Math.min(2,Math.max(0,+localStorage.getItem('sprawl:speed')||0))}catch(e){}
+function showSpeed(){const b=document.getElementById('speed');b.textContent=SPLBL[spd];b.classList.toggle('slow',spd>0);b.setAttribute('aria-label','Game speed '+SPLBL[spd])}
+document.getElementById('speed').addEventListener('click',()=>{spd=(spd+1)%SPEEDS.length;showSpeed();try{localStorage.setItem('sprawl:speed',spd)}catch(e){}});
+showSpeed();
+function getBest(){try{return +localStorage.getItem('lowmoor:best')||0}catch(e){return 0}}
+function setBest(v){try{localStorage.setItem('lowmoor:best',String(v))}catch(e){}}
+function gameOver(full){
+  if(S.over)return;S.over=true;tool=null;pending=-1;const sc=Math.floor(S.score),prev=getBest();
+  if(sc>prev)setBest(sc);const m={kind:'over',full:!!full,best:Math.max(sc,prev),record:sc>prev,lb:{state:'ask'}};
+  setModal(m);if(getName()&&sc>0)submitScore(getName());
+}
+/* ---------- leaderboard ---------- */
+const API='/api/scores';
+function getName(){try{return localStorage.getItem('sprawl:name')||''}catch(e){return ''}}
+function setName(v){try{localStorage.setItem('sprawl:name',v)}catch(e){}}
+function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}
+function ordinal(n){const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
+async function submitScore(name){
+  const m=S.modal;if(!m||m.kind!=='over'||m.lb.state==='loading'||m.lb.state==='done')return;
+  m.lb={state:'loading'};setModal(m);
+  try{
+    const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({name,score:Math.floor(S.score),week:S.week,seed:S.seed,daily:S.daily,t:Math.round(S.t),houses:S.houses.length})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||'The leaderboard is offline right now.');
+    m.lb={state:'done',...j};
+  }catch(e){m.lb={state:'error',msg:/fetch|network|JSON/i.test(e.message)?'The leaderboard is offline right now.':e.message}}
+  if(S.modal===m)setModal(m);
+}
+function lbHTML(m){
+  const L=m.lb,where=S.daily?"today's map":'random maps';
+  if(Math.floor(S.score)<=0)return '';
+  if(L.state==='ask')return `<div class="lb"><span class="label">Leaderboard</span>
+    <form id="nameform"><input id="pname" name="pname" maxlength="16" autocomplete="nickname" placeholder="Your name" value="${esc(getName())}" required><button class="btn primary" type="submit">Post score</button></form></div>`;
+  if(L.state==='loading')return `<div class="lb"><span class="label">Leaderboard</span><p class="muted">Posting your score…</p></div>`;
+  if(L.state==='error')return `<div class="lb"><span class="label">Leaderboard</span><p class="muted">${esc(L.msg)}</p><button class="linkbtn" data-act="retry">Try again</button></div>`;
+  const rows=L.top.map((r,k)=>`<li class="${r.id===L.id?'me':''}"><span>${k+1}</span><span>${esc(r.name)}</span><span>${r.score}</span></li>`).join('');
+  const mine=L.rank>L.top.length?`<li class="gap" aria-hidden="true">⋯</li><li class="me"><span>${L.rank}</span><span>${esc(getName())}</span><span>${Math.floor(S.score)}</span></li>`:'';
+  return `<div class="lb"><span class="label">Leaderboard · ${where}</span>
+    <p class="rank">You placed ${ordinal(L.rank)} of ${L.total}</p>
+    <ol class="board">${rows}${mine}</ol>
+    <button class="linkbtn" data-act="rename">Not ${esc(getName())}? Change name</button></div>`;
+}
+async function loadLeader(){
+  try{const r=await fetch(API+'?board=daily&seed='+todaySeed());if(!r.ok)return;const j=await r.json();
+    const el=document.getElementById('leader');if(el&&j.top&&j.top[0])el.textContent=`Today's leader: ${j.top[0].name} with ${j.top[0].score}. `}catch(e){}
+}
+function begin(){S.started=true;S.paused=false;setModal(null)}
+
+/* ---------- placing ---------- */
+function canPlace(i){return i>=0&&S.grid[i]===EMPTY&&nb(i).some(isSt)}
+function place(i){
+  if(!tool||S.inv[tool]<=0||!canUse(i))return;
+  if(canUpgrade(i)){const s=S.services[svcAt(i)],from=svcName(s);s.lvl=(s.lvl||1)+1;s.pop=S.t;S.inv[tool]--;
+    const el=document.getElementById('toast');el.innerHTML=icon(s.type)+from+' → '+svcName(s);el.classList.add('show');
+    clearTimeout(restock.tm);restock.tm=setTimeout(()=>el.classList.remove('show'),1800);}
+  else{S.grid[i]=SERVICE;S.services.push({i,type:tool,lvl:1});S.inv[tool]--;}
+  if(S.inv[tool]===0)tool=null;pending=-1;dirty=true;
+}
+function moveTile(i){
+  const s=S.services[moving];if(!s||S.moves<=0||!canPlace(i))return;
+  S.grid[s.i]=EMPTY;s.i=i;S.grid[i]=SERVICE;S.moves--;selected=moving;moving=-1;pending=-1;dirty=true;
+}
+function cellAt(e){
+  const r=cv.getBoundingClientRect(),{cs,ox,oy}=layout;
+  const x=Math.floor((e.clientX-r.left-ox)/cs),y=Math.floor((e.clientY-r.top-oy)/cs);
+  return inb(x,y)?y*S.cols+x:-1;
+}
+cv.addEventListener('pointerdown',e=>{
+  if(!S||!S.started||S.over||S.modal)return;
+  const i=cellAt(e);
+  if(moving>=0){
+    if(canPlace(i)){if(pending===i||e.pointerType==='mouse')moveTile(i);else pending=i}else{moving=-1;pending=-1}
+    return;
+  }
+  if(tool){
+    if(canUse(i)){if(pending===i||e.pointerType==='mouse')place(i);else pending=i}else pending=-1;
+  }else{selected=S.services.findIndex(s=>s.i===i)}
+});
+cv.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&S)hover=cellAt(e)});
+cv.addEventListener('pointerleave',()=>{hover=-1});
+
+/* ---------- drawing ---------- */
+function readColors(){const c=getComputedStyle(document.documentElement);
+  for(const k of ['ground','plate','street','edge','house','bubble','angry','line','ink','muted','shop','bus','park','school'])col[k]=c.getPropertyValue('--'+k).trim()}
+function resize(){
+  const r=$('#stage').getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(S){const cs=Math.floor(Math.min((r.width-8)/S.cols,(r.height-8)/S.rows));layout={cs,ox:(r.width-cs*S.cols)/2,oy:(r.height-cs*S.rows)/2,w:r.width,h:r.height}}
+}
+function ctr(i){const {cs,ox,oy}=layout;return[ox+(i%S.cols+.5)*cs,oy+(((i/S.cols)|0)+.5)*cs]}
+function rr(x,y,w,h,r){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h)}
+function shape(t,x,y,r){
+  ctx.beginPath();
+  switch(TYPES[t].shape){
+    case 'circle':ctx.arc(x,y,r,0,Math.PI*2);break;
+    case 'triangle':ctx.moveTo(x,y-r*1.12);ctx.lineTo(x+r*1.1,y+r*.8);ctx.lineTo(x-r*1.1,y+r*.8);ctx.closePath();break;
+    case 'square':{const s=r*.88;if(ctx.roundRect)ctx.roundRect(x-s,y-s,s*2,s*2,s*.25);else ctx.rect(x-s,y-s,s*2,s*2);break}
+    case 'diamond':ctx.moveTo(x,y-r*1.18);ctx.lineTo(x+r*1.18,y);ctx.lineTo(x,y+r*1.18);ctx.lineTo(x-r*1.18,y);ctx.closePath();break;
+  }
+}
+function homePath(L,cs){
+  const c=v=>v*cs;ctx.beginPath();
+  if(L===1){ctx.moveTo(c(-.22),c(-.02));ctx.lineTo(0,c(-.26));ctx.lineTo(c(.22),c(-.02));ctx.lineTo(c(.22),c(.26));ctx.lineTo(c(-.22),c(.26));ctx.closePath()}
+  else if(L===2){ctx.moveTo(c(-.38),c(-.02));ctx.lineTo(c(-.19),c(-.24));ctx.lineTo(0,c(-.02));ctx.lineTo(c(.19),c(-.24));ctx.lineTo(c(.38),c(-.02));ctx.lineTo(c(.38),c(.26));ctx.lineTo(c(-.38),c(.26));ctx.closePath()}
+  else{if(ctx.roundRect)ctx.roundRect(c(-.29),c(-.34),c(.58),c(.64),c(.04));else ctx.rect(c(-.29),c(-.34),c(.58),c(.64))}
+}
+function homeDetail(L,cs){
+  const c=v=>v*cs;ctx.fillStyle=col.plate;
+  if(L===1)ctx.fillRect(c(-.05),c(.1),c(.1),c(.16));
+  else if(L===2){ctx.fillRect(c(-.24),c(.1),c(.09),c(.16));ctx.fillRect(c(.15),c(.1),c(.09),c(.16));ctx.fillRect(c(-.015),c(-.02),c(.03),c(.28))}
+  else for(let r=0;r<3;r++)for(let k=0;k<2;k++)ctx.fillRect(c(-.19+k*.24),c(-.26+r*.19),c(.14),c(.1));
+}
+function draw(T){
+  const {cs,ox,oy,w,h}=layout;
+  ctx.fillStyle=col.ground;ctx.fillRect(0,0,w,h);
+  ctx.fillStyle=col.plate;rr(ox-4,oy-4,cs*S.cols+8,cs*S.rows+8,12);ctx.fill();
+
+  const mv=moving>=0?S.services[moving]:null;
+  if(tool||mv){ctx.fillStyle=col.line;for(let i=0;i<S.grid.length;i++)if(canPlace(i)){const [x,y]=ctr(i);ctx.beginPath();ctx.arc(x,y,Math.max(1.5,cs*.07),0,7);ctx.fill()}}
+  const upg=[];if(tool)for(let i=0;i<S.grid.length;i++)if(canUpgrade(i))upg.push(i);
+
+  // streets
+  ctx.lineCap='round';
+  for(const [c,lw] of [[col.edge,.58],[col.street,.42]]){
+    ctx.strokeStyle=c;ctx.lineWidth=cs*lw;ctx.beginPath();
+    for(let i=0;i<S.grid.length;i++){if(!isSt(i))continue;const [x,y]=ctr(i),xx=i%S.cols;
+      ctx.moveTo(x,y);ctx.lineTo(x+.01,y);
+      if(xx<S.cols-1&&isSt(i+1)){ctx.moveTo(x,y);ctx.lineTo(x+cs,y)}
+      if(i+S.cols<S.grid.length&&isSt(i+S.cols)){ctx.moveTo(x,y);ctx.lineTo(x,y+cs)}}
+    ctx.stroke();
+  }
+
+  // reach preview
+  let pv=-1,pt=null,pl=1,pu=false;
+  if(tool||mv){const c=pending>=0?pending:hover;if(tool&&canUpgrade(c)){pv=c;pt=tool;pl=(S.services[svcAt(c)].lvl||1)+1;pu=true}else if(canPlace(c)){pv=c;pt=tool||mv.type;pl=mv?(mv.lvl||1):1}}
+  else if(selected>=0&&S.services[selected]){const s=S.services[selected];pv=s.i;pt=s.type;pl=s.lvl||1}
+  let pmap=null;
+  if(pv>=0){
+    pmap=reachMap(pv,pt,pl);ctx.globalAlpha=.32;ctx.fillStyle=col[pt];
+    for(const [i] of pmap){const [x,y]=ctr(i);ctx.beginPath();ctx.arc(x,y,cs*.3,0,7);ctx.fill()}
+    ctx.globalAlpha=1;
+  }
+  if(!tool&&!mv&&selected>=0&&S.services[selected]){
+    const s=S.services[selected],[sx,sy]=ctr(s.i);ctx.strokeStyle=col[s.type];ctx.lineWidth=2;ctx.globalAlpha=.8;ctx.beginPath();
+    for(const h of S.houses)if(h.by.includes(selected)){const [x,y]=ctr(h.i);ctx.moveTo(sx,sy);ctx.lineTo(x,y)}
+    ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  // services
+  S.services.forEach((s,k)=>{const [x,y]=ctr(s.i),L=s.lvl||1,age=S.t-(s.pop??-99),b=(!RM&&age<.5)?1+.4*(1-age/.5):1;
+    ctx.globalAlpha=k===moving?.35:1;
+    const ld=(S.load[k]||0)/capOf(s.type,L),R0=cs*.46;
+    if(k!==moving){ctx.lineWidth=Math.max(2,cs*.07);ctx.strokeStyle=col.line;ctx.beginPath();ctx.arc(x,y,R0,0,7);ctx.stroke();
+      if(ld>0){ctx.strokeStyle=ld>=1?col.angry:ld>=.75?col.ink:col.muted;ctx.beginPath();ctx.arc(x,y,R0,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.min(1,ld));ctx.stroke()}
+      if(S.full&&S.full[k]){ctx.globalAlpha=RM?.6:.35+.35*Math.sin(T*6);ctx.lineWidth=Math.max(2,cs*.06);ctx.strokeStyle=col.angry;ctx.beginPath();ctx.arc(x,y,R0+cs*.1,0,7);ctx.stroke();ctx.globalAlpha=1}}
+    for(let r=L;r>=1;r--){shape(s.type,x,y,cs*(.26+.07*(r-1))*b);if(r===1){ctx.fillStyle=col[s.type];ctx.fill()}else{ctx.lineWidth=Math.max(1.5,cs*.05);ctx.strokeStyle=col[s.type];ctx.stroke()}}
+    if(L===1){shape(s.type,x,y,cs*.26*b);ctx.lineWidth=2;ctx.strokeStyle=col.plate;ctx.stroke()}
+    if(!RM&&age<1.2){ctx.globalAlpha=1-age/1.2;ctx.lineWidth=2;ctx.strokeStyle=col[s.type];ctx.beginPath();ctx.arc(x,y,cs*(.4+.5*age/1.2),0,7);ctx.stroke()}
+    ctx.globalAlpha=1});
+  if(upg.length){const pa=RM?.8:.5+.4*Math.sin(T*5);ctx.globalAlpha=pa;ctx.setLineDash([3,3]);ctx.lineWidth=1.5;ctx.strokeStyle=col.ink;
+    for(const i of upg){const [x,y]=ctr(i);ctx.beginPath();ctx.arc(x,y,cs*.5,0,7);ctx.stroke()}ctx.setLineDash([]);ctx.globalAlpha=1}
+
+  // homes
+  const P=patience(),pulse=RM?1:.55+.45*Math.sin(T*8);
+  for(const hs of S.houses){
+    const [x,y]=ctr(hs.i),cy=y-cs*.08,L=hs.lvl,age=S.t-(hs.pop??-99);
+    const bounce=(!RM&&age<.5)?1+.35*(1-age/.5):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(bounce,bounce);
+    homePath(L,cs);ctx.fillStyle=col.house;ctx.fill();
+    if(hs.angry){ctx.lineWidth=Math.max(2,cs*.08);ctx.strokeStyle=col.angry;ctx.globalAlpha=pulse;ctx.stroke();ctx.globalAlpha=1}
+    homeDetail(L,cs);ctx.restore();
+    if(!RM&&age<1.2){ctx.globalAlpha=1-age/1.2;ctx.lineWidth=2;ctx.strokeStyle=col.ink;ctx.beginPath();ctx.arc(x,cy,cs*(.35+.45*age/1.2),0,7);ctx.stroke();ctx.globalAlpha=1}
+    const n=hs.needs.length,py=y+cs*.4,pr=Math.max(2,cs*.065);
+    hs.needs.forEach((t,k)=>{const px=x+(k-(n-1)/2)*cs*.19;shape(t,px,py,pr);
+      if(hs.by[k]>=0){ctx.fillStyle=col[t];ctx.fill()}else{ctx.fillStyle=col.plate;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle=col[t];ctx.stroke()}});
+    if(pmap&&hs.needs.includes(pt)&&houseDist(hs.i,pmap)<1e9){const hw=[.24,.4,.31][L-1]*cs,top=[.28,.26,.36][L-1]*cs;rr(x-hw-3,cy-top-3,hw*2+6,top+cs*.3+6,cs*.12);ctx.lineWidth=2;ctx.strokeStyle=col[pt];ctx.stroke()}
+  }
+
+  // ghost
+  if((tool||mv)&&pv>=0&&!pu){const [x,y]=ctr(pv);ctx.globalAlpha=pending>=0?.85:.55;shape(pt,x,y,cs*.36);ctx.fillStyle=col[pt];ctx.fill();ctx.globalAlpha=1;
+    ctx.setLineDash([3,3]);ctx.strokeStyle=col.ink;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,cs*.5,0,7);ctx.stroke();ctx.setLineDash([])}
+
+  // need bubbles
+  for(const hs of S.houses){
+    const need=firstUnmet(hs);if(!need)continue;
+    const [x,y]=ctr(hs.i),bx=x+cs*.3,by=y-cs*.3,r=cs*.27,f=hs.wait/P;
+    ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fillStyle=col.bubble;ctx.fill();
+    ctx.lineWidth=Math.max(1.5,cs*.07);ctx.strokeStyle=col.line;ctx.stroke();
+    if(f>0){ctx.beginPath();ctx.arc(bx,by,r,-Math.PI/2,-Math.PI/2+Math.PI*2*f);ctx.strokeStyle=col.angry;ctx.stroke()}
+    shape(need,bx,by,r*.5);ctx.fillStyle=col[need];ctx.fill();
+  }
+}
+
+/* ---------- UI ---------- */
+function svgShape(t,sz){
+  const f=`fill="var(--${t})"`;
+  switch(TYPES[t].shape){
+    case 'circle':return `<circle cx="0" cy="0" r="8" ${f}/>`;
+    case 'triangle':return `<polygon points="0,-9 9,7 -9,7" ${f}/>`;
+    case 'square':return `<rect x="-7.5" y="-7.5" width="15" height="15" rx="2.5" ${f}/>`;
+    case 'diamond':return `<polygon points="0,-9.5 9.5,0 0,9.5 -9.5,0" ${f}/>`;
+  }
+}
+function icon(t){return `<svg viewBox="-11 -11 22 22" aria-hidden="true">${svgShape(t)}</svg>`}
+function renderTools(){
+  $('#tools').innerHTML=ORDER.map(t=>`<button class="tool" id="tool-${t}" data-t="${t}" aria-pressed="false">${icon(t)}<span class="lbl" id="lbl-${t}">${TYPES[t].name}</span><span class="cnt" id="cnt-${t}">0</span></button>`).join('');
+}
+$('#tools').addEventListener('click',e=>{
+  const b=e.target.closest('.tool');if(!b||b.disabled||!S.started||S.over)return;
+  const t=b.dataset.t;tool=tool===t?null:t;pending=-1;selected=-1;moving=-1;
+});
+$('#move').addEventListener('click',()=>{
+  if(!S.started||S.over||S.modal)return;
+  if(moving>=0){moving=-1;pending=-1}else if(selected>=0&&S.moves>0){moving=selected;pending=-1}
+});
+const ui={};
+function setText(id,v){if(ui[id]!==v){ui[id]=v;document.getElementById(id).textContent=v}}
+function hintText(){
+  if(!S.started||S.over)return '';
+  if(tool){const n=TYPES[tool];if(pending>=0){if(canUpgrade(pending)){const s=S.services[svcAt(pending)];return `Tap again to upgrade to a ${TYPES[s.type].lv[s.lvl||1].toLowerCase()} (serves ${capOf(s.type,(s.lvl||1)+1)}).`}return `Tap again to place the ${n.name.toLowerCase()}.`}
+    return S.services.some(s=>s.type===tool&&(s.lvl||1)<3)?`Tap beside a street, or tap a ${n.name.toLowerCase()} to upgrade it.`:`Tap a spot beside a street. ${n.blurb}`}
+  if(moving>=0&&S.services[moving]){const n=TYPES[S.services[moving].type].name.toLowerCase();return pending>=0?`Tap again to move the ${n} here.`:`Tap a new spot for the ${n}.`}
+  if(selected>=0&&S.services[selected]){const s=S.services[selected];return `${svcName(s)} serving ${S.load[selected]||0} of ${capOf(s.type,s.lvl||1)} homes.`}
+  return 'Homes show what they need. Pick a tile below.';
+}
+function uiTick(){
+  setText('week',String(S.week));
+  const wb=Math.min(100,Math.round(S.weekT/WEEK*100));if(ui.wb!==wb){ui.wb=wb;$('#weekbar').style.width=wb+'%'}
+  setText('score',String(Math.floor(S.score)));
+  if(ui.a!==S.angry){ui.a=S.angry;document.querySelectorAll('#pips b').forEach((b,k)=>b.classList.toggle('on',k<S.angry))}
+  ORDER.forEach((t,k)=>{
+    const locked=k>=S.unlocked,key=[S.inv[t],locked,tool===t,S.started].join();
+    if(ui['t'+t]===key)return;ui['t'+t]=key;
+    const b=document.getElementById('tool-'+t);b.disabled=locked||S.inv[t]<=0||!S.started;b.setAttribute('aria-pressed',String(tool===t));
+    document.getElementById('cnt-'+t).textContent=locked?'–':S.inv[t];
+    document.getElementById('lbl-'+t).textContent=locked?'Week '+(k+1):TYPES[t].name;
+  });
+  setText('hint',hintText());
+  const showMove=S.started&&!S.over&&!tool&&(moving>=0||(selected>=0&&!!S.services[selected]));
+  const mk=[showMove,moving>=0,S.moves].join();
+  if(ui.mv!==mk){ui.mv=mk;const b=$('#move');b.hidden=!showMove;
+    b.textContent=moving>=0?'Cancel':(S.moves>0?`Move (${S.moves} left)`:'No moves until next week');b.disabled=moving<0&&S.moves<=0}
+  $('#pause').disabled=!S.started||S.over||!!S.modal;
+}
+function cardHTML(m){
+  if(m.kind==='start'){
+    const best=getBest();
+    return `<h2>Sprawl</h2>
+      <p>Streets grow on their own. Homes pop up beside them, each wanting something.</p>
+      <ul class="rules">
+        <li>${icon('shop')}<span>Pick a tile from the tray and place it beside a street.</span></li>
+        <li>${icon('bus')}<span>Each tile serves nearby homes. Add a matching tile on top to upgrade it.</span></li>
+        <li>${icon('park')}<span>Happy homes grow and ask for more. Tap a tile to move it, once a week.</span></li>
+        <li>${icon('school')}<span>Five fed-up homes at once and the run ends.</span></li>
+      </ul>
+      <div class="btns"><button class="btn primary" data-act="daily">Play today's map</button><button class="btn" data-act="random">Random map</button></div>
+      <p class="muted"><span id="leader"></span>${best?'Your best is '+best+'. ':''}Today's map is the same for everyone.</p>`;
+  }
+  if(m.kind==='week'){
+    const chips=Object.entries(m.got).map(([t,n])=>`<span class="chip">${icon(t)}+${n} ${n>1?plural(t):TYPES[t].name}${t===m.fresh?' <em>new</em>':''}</span>`).join('');
+    return `<span class="label">Week ${S.week}</span><h2>New tiles arrived</h2>
+      <div class="chips">${chips}<span class="chip">⇄ ${S.moves} move${S.moves>1?'s':''} ready</span></div>
+      ${m.fresh?`<p class="muted">${TYPES[m.fresh].blurb} Homes will start asking for them.</p>`:''}
+      <span class="label">Pick one upgrade</span>
+      <div class="opts">${m.opts.map((o,k)=>`<button class="opt" data-act="opt" data-k="${k}"><b>${o.title}</b><span>${o.desc}</span></button>`).join('')}</div>`;
+  }
+  if(m.kind==='over'){
+    return `<span class="label">${S.daily?"Today's map":'Random map'} · week ${S.week}</span><h2>${m.full?'Nowhere left to sprawl':'The town has had enough'}</h2>
+      <p>${m.full?'Every plot is taken. Nice planning.':'Five homes gave up waiting.'}</p>
+      <div><div class="label">Score</div><div class="big">${Math.floor(S.score)}</div></div>
+      <p class="muted">${m.record?'New best score.':'Best score '+m.best+'.'} ${S.houses.length} homes, ${S.services.length} tiles placed.</p>
+      ${lbHTML(m)}
+      <div class="btns"><button class="btn primary" data-act="again">Same map again</button><button class="btn" data-act="random">New random map</button></div>`;
+  }
+  if(m.kind==='pause'){
+    return `<h2>Paused</h2><p class="muted">Week ${S.week}, score ${Math.floor(S.score)}.</p>
+      <div class="btns"><button class="btn primary" data-act="resume">Resume</button><button class="btn" data-act="again">Start over</button></div>`;
+  }
+  return '';
+}
+function setModal(m){S.modal=m;const ov=$('#ov');if(!m){ov.hidden=true;return}$('#card').innerHTML=cardHTML(m);ov.hidden=false;const f=$('#card button');if(f)f.focus({preventScroll:true})}
+$('#card').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+  if(a==='daily'){const d=todaySeed();if(S.seed!==d||S.started)newGame(d,true);begin()}
+  else if(a==='random'){newGame('r'+Date.now(),false);begin()}
+  else if(a==='again'){newGame(S.seed,S.daily);begin()}
+  else if(a==='opt'){applyOpt(S.modal.opts[+b.dataset.k]);setModal(null)}
+  else if(a==='resume'){S.paused=false;setModal(null)}
+  else if(a==='retry'){S.modal.lb={state:'ask'};const n=getName();if(n)submitScore(n);else setModal(S.modal)}
+  else if(a==='rename'){S.modal.lb={state:'ask'};setModal(S.modal);const i=document.getElementById('pname');if(i){i.focus();i.select()}}
+});
+$('#card').addEventListener('submit',e=>{e.preventDefault();const i=document.getElementById('pname');const n=(i&&i.value||'').trim().slice(0,16);
+  if(!n)return;setName(n);S.modal.lb={state:'ask'};submitScore(n)});
+$('#pause').addEventListener('click',()=>{if(!S.started||S.over||S.modal)return;S.paused=true;setModal({kind:'pause'})});
+document.addEventListener('keydown',e=>{
+  if(!S||!S.started||S.over)return;
+  if(e.key===' '&&!S.modal){e.preventDefault();$('#pause').click()}
+  else if(e.key==='Escape'){tool=null;pending=-1;selected=-1;moving=-1}
+  else if(/^[1-4]$/.test(e.key)&&!S.modal){const t=ORDER[+e.key-1];if(+e.key<=S.unlocked&&S.inv[t]>0){tool=tool===t?null:t;pending=-1}}
+});
+
+/* ---------- loop ---------- */
+let last=0;
+function frame(ts){
+  const dt=last?Math.min(.1,(ts-last)/1000):0;last=ts;
+  if(S.started&&!S.paused&&!S.over&&!S.modal)step(dt*SPEEDS[spd]);
+  if(dirty)assign();
+  draw(ts/1000);uiTick();
+  requestAnimationFrame(frame);
+}
+readColors();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readColors);
+new MutationObserver(readColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+new ResizeObserver(resize).observe($('#stage'));
+
+function start(data){
+  renderTools();
+  if(data&&data.S){S=data.S;resize();dirty=true;S.moves??=1;for(const s of S.services)s.lvl??=1;
+    for(const h of S.houses)if(!h.needs){h.needs=[h.need];h.by=[h.by];h.lvl=1;h.happyT=0}
+    if(S.started&&!S.over&&!S.modal){S.paused=true;setModal({kind:'pause'})}else setModal(S.modal);
+  }else{newGame(todaySeed(),true);setModal({kind:'start'});loadLeader()}
+  requestAnimationFrame(frame);
+}
+const hot=window.claude&&window.claude.hot;
+if(hot&&typeof hot.snapshot==='function'){try{hot.snapshot(()=>({S}))}catch(e){}}
+if(hot&&typeof hot.ready==='function')hot.ready(start);else start((hot&&hot.data)||{});
+})();
+</script>
+
+</body>
+</html>

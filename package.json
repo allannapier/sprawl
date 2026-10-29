@@ -1,0 +1,12 @@
+{
+  "name": "sprawl",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler d1 migrations apply sprawl --local && wrangler pages dev",
+    "db:migrate": "wrangler d1 migrations apply sprawl --remote",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}
