@@ -5,5 +5,5 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "sprawl"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "3acd7c2a-5e45-43d4-b17b-6207b86ebae4"
 migrations_dir = "migrations"
