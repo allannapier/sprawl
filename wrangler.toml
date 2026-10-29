@@ -1,6 +1,10 @@
 name = "sprawl"
-compatibility_date = "2024-09-23"
-pages_build_output_dir = "public"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"

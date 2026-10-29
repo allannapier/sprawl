@@ -2,42 +2,35 @@
 
 A little town-planning game. Streets grow on their own, homes pop up beside them, and you place shops, bus stops, parks and schools to keep everyone happy. Five fed-up homes and the run ends.
 
-Runs on Cloudflare Pages, with a D1 database for the leaderboard.
+Runs on Cloudflare Workers (static assets + a small API), with a D1 database for the leaderboard.
 
 ## Layout
 
 ```
 public/index.html          the whole game (one file, no build step)
-functions/api/scores.js    leaderboard API (Pages Function)
+src/worker.js              routes /api/scores, serves everything else from public/
+src/scores.js              leaderboard API
 migrations/                D1 schema
-wrangler.toml              Pages + D1 config
+wrangler.toml              Worker + assets + D1 config
 ```
 
 ## Run locally
 
 ```sh
 npm install
-npm run dev        # applies migrations to a local D1, serves on http://localhost:8788
+npm run dev        # applies migrations to a local D1, serves on http://localhost:8787
 ```
 
-## Deploy (one-time setup)
+## Deploy
 
-1. Create the database and copy the `database_id` it prints into `wrangler.toml`:
-   ```sh
-   npx wrangler login
-   npx wrangler d1 create sprawl
-   ```
-2. Create the table in the real database:
-   ```sh
-   npm run db:migrate
-   ```
-3. In the Cloudflare dashboard: **Workers & Pages → Create → Pages → Connect to Git**, pick this repo.
-   - Build command: *(leave empty)*
-   - Build output directory: `public`
-4. In the Pages project, **Settings → Bindings → Add → D1 database**: variable name `DB`, database `sprawl`.
-5. Optional: **Settings → Variables and secrets**, add `IP_SALT` with any random string. It salts the hashed IPs used for rate limiting.
+The Worker deploys from GitHub via Workers Builds (deploy command `npx wrangler deploy`), so every push to `main` goes live.
 
-After that, every push to `main` deploys.
+One-time setup, already done for this project:
+
+1. `npx wrangler d1 create sprawl` and put the `database_id` in `wrangler.toml`.
+2. `npm run db:migrate` to create the table.
+3. Cloudflare dashboard: **Workers & Pages → Create → Import a repository**, pick this repo. The Worker name must match `name` in `wrangler.toml` (`sprawl`).
+4. Optional: add a secret `IP_SALT` with any random string. It salts the hashed IPs used for rate limiting.
 
 ## Leaderboard API
 
